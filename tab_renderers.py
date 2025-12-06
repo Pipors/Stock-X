@@ -17,7 +17,7 @@ class TabRenderer:
         self.all_kpis = all_kpis
         self.ui = ui_components
         self.charts = chart_builder
-    
+
     def render_stock_overview_tab(self):
         """Render Stock Overview Tab - Original stock dashboard view"""
         return html.Div([
@@ -63,7 +63,7 @@ class TabRenderer:
     def render_kpi_tab(self):
         """Render KPI Metrics Tab"""
         inventory_turnover = self.all_kpis['inventory_turnover']
-        dsi = self.all_kpis['days_sales_inventory']
+        dsi = self.all_kpis['days_sales_inventory']  #Day Sales Inventory = dsi
         stock_accuracy = self.all_kpis['stock_accuracy']
         stockout = self.all_kpis['stockout_rate']
         fulfillment = self.all_kpis['order_fulfillment']
@@ -81,15 +81,15 @@ class TabRenderer:
                 html.Div([
                     self.ui.create_kpi_card('Inventory Turnover', f'{inventory_turnover["annual_turnover"]}x', 
                                           inventory_turnover['interpretation'], '🔄', self.ui.colors['primary'], 
-                                          'Good' if inventory_turnover["annual_turnover"] > 6 else 'Average', 'inventory_turnover'),
+                                          'Good' if inventory_turnover["annual_turnover"] > 6 else 'Average', "inventory_turnover"),
                     self.ui.create_kpi_card('Days Sales Inventory', f'{dsi["days_sales_inventory"]} days', 
-                                          dsi['interpretation'], '📅', self.ui.colors['info'], dsi['status'], 'dsi'),
+                                          dsi['interpretation'], '📅', self.ui.colors['info'], dsi['status'], "dsi"),
                     self.ui.create_kpi_card('Carrying Cost', f'${carrying["annual_carrying_cost"]:,.0f}', 
-                                          f'{carrying["carrying_cost_rate"]}% of inventory', '💸', self.ui.colors['warning'], carrying['status'], 'carrying_cost'),
+                                          f'{carrying["carrying_cost_rate"]}% of inventory', '💸', self.ui.colors['warning'], carrying['status'], "carrying"),
                     self.ui.create_kpi_card('Dead Stock', f'{dead_stock["dead_stock_percentage"]}%', 
-                                          f'${dead_stock["dead_stock_value"]:,.0f} value', '☠️', self.ui.colors['danger'], dead_stock['status'], 'dead_stock'),
+                                          f'${dead_stock["dead_stock_value"]:,.0f} value', '☠️', self.ui.colors['danger'], dead_stock['status'], "dead_stock"),
                     self.ui.create_kpi_card('Shrinkage', f'{shrinkage["shrinkage_rate"]}%', 
-                                          f'${shrinkage["shrinkage_value"]:,.0f} loss', '📉', self.ui.colors['danger'], shrinkage['status'], 'shrinkage'),
+                                          f'${shrinkage["shrinkage_value"]:,.0f} loss', '📉', self.ui.colors['danger'], shrinkage['status'], "shrinkage"),
                 ], style={'padding': '10px 20px'}),
             ]),
             

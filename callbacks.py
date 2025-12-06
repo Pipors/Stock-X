@@ -4,7 +4,7 @@ Handles: All Dash callbacks for user interactions
 """
 
 import dash
-from dash.dependencies import Input, Output
+from dash.dependencies import Input, Output, State
 
 
 class DashboardCallbacks:
@@ -22,6 +22,7 @@ class DashboardCallbacks:
         self._register_tab_navigation_callback()
         self._register_kpi_click_callback()
         self._register_modal_toggle_callback()
+        self._register_modal_close_callback()
     
     def _register_tab_navigation_callback(self):
         """Register callback for tab navigation"""
@@ -69,40 +70,41 @@ class DashboardCallbacks:
             Output('kpi-modal', 'style'),
             Output('kpi-modal', 'children'),
             Input('clicked-kpi-store', 'data'),
+            prevent_initial_call=True
+        )
+        def show_kpi_modal(kpi_id):
+            if not kpi_id:
+                return dash.no_update, dash.no_update
+            
+            # Generate modal content
+            modal_content = self.kpi_modal.generate_kpi_details(kpi_id)
+            
+            modal_style = {
+                'position': 'fixed',
+                'top': '0',
+                'left': '0',
+                'width': '100%',
+                'height': '100%',
+                'backgroundColor': 'rgba(0,0,0,0.8)',
+                'zIndex': '1000',
+                'display': 'flex',
+                'alignItems': 'center',
+                'justifyContent': 'center',
+                'overflow': 'auto',
+                'padding': '20px'
+            }
+            
+            return modal_style, modal_content
+    
+    def _register_modal_close_callback(self):
+        """Register callback to close KPI modal"""
+        @self.app.callback(
+            Output('kpi-modal', 'style', allow_duplicate=True),
+            Output('kpi-modal', 'children', allow_duplicate=True),
             Input('close-modal', 'n_clicks'),
             prevent_initial_call=True
         )
-        def toggle_kpi_modal(kpi_id, close_clicks):
-            ctx = dash.callback_context
-            
-            if not ctx.triggered:
-                return dash.no_update, dash.no_update
-            
-            trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
-            
-            # If close button was clicked
-            if trigger_id == 'close-modal':
+        def close_kpi_modal(n_clicks):
+            if n_clicks:
                 return {'display': 'none'}, []
-            
-            # If a KPI was clicked
-            if trigger_id == 'clicked-kpi-store' and kpi_id:
-                modal_content = self.kpi_modal.generate_kpi_details(kpi_id)
-                
-                modal_style = {
-                    'position': 'fixed',
-                    'top': '0',
-                    'left': '0',
-                    'width': '100%',
-                    'height': '100%',
-                    'backgroundColor': 'rgba(0,0,0,0.8)',
-                    'zIndex': '1000',
-                    'display': 'flex',
-                    'alignItems': 'center',
-                    'justifyContent': 'center',
-                    'overflow': 'auto',
-                    'padding': '20px'
-                }
-                
-                return modal_style, modal_content
-            
             return dash.no_update, dash.no_update

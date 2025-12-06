@@ -38,11 +38,11 @@ class KPIDetailsModal:
                         html.Button('✕', id='close-modal', 
                                    style={'backgroundColor': 'transparent', 'border': 'none', 
                                           'color': self.colors['text'], 'fontSize': '32px', 
-                                          'cursor': 'pointer', 'position': 'absolute', 'right': '20px', 'top': '20px'})
+                                          'cursor': 'pointer', 'position': 'absolute', 'right': '10px', 'top': '0px'})
                     ], style={'position': 'relative', 'borderBottom': f'2px solid {self.colors["border"]}', 'paddingBottom': '15px'}),
                     
                     # Formula
-                    self._create_formula_section(kpi_info['formula']),
+                    #self._create_formula_section(kpi_info['formula']),
                     
                     # Calculation Steps
                     self._create_calculation_steps_section(kpi_info['calculation_steps']),
