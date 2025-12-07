@@ -95,6 +95,7 @@ pip install psycopg2-binary python-dotenv
 
 ```bash
 # Pull and run PostgreSQL in Docker
+# Note: For production, consider using a non-standard port (e.g., -p 15432:5432)
 docker run --name postgres-stock \
   -e POSTGRES_PASSWORD=postgres \
   -e POSTGRES_USER=postgres \
@@ -103,11 +104,13 @@ docker run --name postgres-stock \
   -d postgres:15
 ```
 
-**⚠️ Security Note**: The default credentials above (postgres/postgres) are for development only. For production environments, use strong passwords and consider:
-- Using Docker secrets or environment files
-- Implementing proper access controls
-- Enabling SSL/TLS connections
-- Regular security audits
+**⚠️ Security Note**: The default credentials above (postgres/postgres) are for development only. For production environments:
+- Use strong, unique passwords (consider environment files or Docker secrets)
+- Map to a non-standard port to reduce exposure (e.g., `-p 15432:5432`)
+- Implement proper access controls and firewall rules
+- Enable SSL/TLS connections
+- Regular security audits and updates
+- Restrict network access to trusted hosts only
 
 ### 2. Verify Container is Running
 

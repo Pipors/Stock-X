@@ -8,7 +8,7 @@
 /check_pwd.bat
 /check_password.ps1
 /diagnose_db.ps1
-# Ignore all markdown files except specific ones
+# Ignore markdown files except documentation files
 *.md
 !README.md
 !CHANGELOG.md
