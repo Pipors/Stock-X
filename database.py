@@ -6,8 +6,12 @@ Handles: PostgreSQL connection, queries, and data retrieval
 import psycopg2
 from psycopg2.extras import RealDictCursor
 import pandas as pd
+import os
 from contextlib import contextmanager
-from config import APP_CONFIG
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 
 class DatabaseConnection:
@@ -15,26 +19,56 @@ class DatabaseConnection:
     
     def __init__(self, db_config=None):
         """Initialize database connection with configuration"""
-        self.db_config = db_config or {
-            'host': 'localhost',
-            'port': 5432,
-            'database': 'stock_management',
-            'user': 'postgres',
-            'password': 'your_password'
-        }
+        if db_config is None:
+            # Load from environment variables with fallback defaults
+            self.db_config = {
+                # 'host': os.getenv('DB_HOST',= 'localhost'),
+                # 'port': int(os.getenv('DB_PORT', '5432')),
+                # 'database': os.getenv('DB_NAME', 'stock_management'),
+                # 'user': os.getenv('DB_USER', 'postgres'),
+                # 'password': os.getenv('DB_PASSWORD', 'my_password')
+                'host':  'localhost',
+                'port': 5432,
+                'database': 'stock_management',
+                'user': 'postgres',
+                'password': 'my_password'
+            }
+            
+            # Debug: Print loaded config (mask password)
+            print(f"📋 Database Config Loaded:")
+            print(f"   Host: {self.db_config['host']}")
+            print(f"   Port: {self.db_config['port']}")
+            print(f"   Database: {self.db_config['database']}")
+            print(f"   User: {self.db_config['user']}")
+            print(f"   Password: {'*' * len(str(self.db_config['password']))}")
+        else:
+            self.db_config = db_config
     
     @contextmanager
     def get_connection(self):
         """Context manager for database connections"""
         conn = None
         try:
+            print(f"🔌 Attempting connection to {self.db_config['host']}:{self.db_config['port']}...")
             conn = psycopg2.connect(**self.db_config)
+            print("✅ Connection successful!")
             yield conn
             conn.commit()
+        except psycopg2.OperationalError as e:
+            if conn:
+                conn.rollback()
+            print(f"❌ Connection failed: {str(e)}")
+            print("\n💡 Common issues:")
+            print("   1. Container not running: docker ps | findstr postgres")
+            print("   2. Wrong password in .env file")
+            print("   3. Database doesn't exist: docker exec -it postgres-stocl psql -U postgres -l")
+            print("   4. Port not exposed: docker port postgres-stocl")
+            raise
         except Exception as e:
             if conn:
                 conn.rollback()
-            raise e
+            print(f"❌ Unexpected error: {str(e)}")
+            raise
         finally:
             if conn:
                 conn.close()

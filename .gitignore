@@ -2,3 +2,10 @@
 /old_versions
 /plotly-cloud.toml
 /__pycache__
+/.env
+/.env.example
+/check_docker.bat
+/check_pwd.bat
+/check_password.ps1
+/diagnose_db.ps1
+/*.md

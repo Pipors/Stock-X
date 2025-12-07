@@ -4,7 +4,7 @@ Handles: Dash app initialization, layout assembly, and server startup
 
 This is the main orchestrator that brings together all modules:
 - config.py: Configuration and colors
-- data_generator.py: Sample data creation
+- database.py: PostgreSQL database connection
 - charts.py: Chart visualizations
 - ui_components.py: Reusable UI elements
 - kpi_modals.py: KPI detail modals
@@ -16,12 +16,14 @@ This is the main orchestrator that brings together all modules:
 import dash
 from dash import dcc, html
 from datetime import datetime
+import os
+import pandas as pd
 
 # Import configuration
 from config import COLORS, APP_CONFIG
 
-# Import data generation
-from data_generator import DataGenerator
+# Import database connection
+from database import DatabaseConnection, StockDataAccess
 
 # Import KPI calculator
 from kpi_calculator import InventoryKPICalculator
@@ -47,10 +49,62 @@ class StockDashboardApp:
     
     def __init__(self):
         """Initialize the dashboard application"""
-        # Generate data
-        self.data_gen = DataGenerator()
-        self.df = self.data_gen.generate_stock_data()
-        self.df_transactions = self.data_gen.generate_transactions()
+        # Database configuration for Docker container
+        db_config = {
+            'host': os.getenv('DB_HOST', 'localhost'),  # Docker container host
+            'port': int(os.getenv('DB_PORT', 5432)),
+            'database': os.getenv('DB_NAME', 'stock_management'),
+            'user': os.getenv('DB_USER', 'postgres'),
+            'password': os.getenv('DB_PASSWORD', 'postgres')
+        }
+        
+        print("=" * 70)
+        print("🔌 Connecting to PostgreSQL database...")
+        print(f"   Host: {db_config['host']}")
+        print(f"   Port: {db_config['port']}")
+        print(f"   Database: {db_config['database']}")
+        print(f"   Container: postgres-stock")
+        
+        try:
+            # Initialize database connection
+            self.db_connection = DatabaseConnection(db_config)
+            self.stock_data_access = StockDataAccess(self.db_connection)
+            
+            # Fetch data from database
+            print("📊 Fetching inventory data from database...")
+            self.df = self.stock_data_access.get_current_stock_summary()
+            self.df_transactions = self.stock_data_access.get_transaction_history(days=30)
+            
+            # Convert numeric columns to proper types
+            numeric_cols = ['Quantity', 'Reserved', 'Available', 'Reorder_Level', 
+                          'Unit_Price', 'Selling_Price', 'Total_Value']
+            for col in numeric_cols:
+                if col in self.df.columns:
+                    self.df[col] = pd.to_numeric(self.df[col], errors='coerce').fillna(0)
+            
+            # Convert transaction numeric columns
+            trans_numeric_cols = ['Quantity', 'Unit_Cost', 'Total_Value']
+            for col in trans_numeric_cols:
+                if col in self.df_transactions.columns:
+                    self.df_transactions[col] = pd.to_numeric(self.df_transactions[col], errors='coerce').fillna(0)
+            
+            print(f"✅ Successfully loaded {len(self.df)} products")
+            print(f"✅ Successfully loaded {len(self.df_transactions)} transactions")
+            print("=" * 70)
+            
+        except Exception as e:
+            print("❌ Database connection failed!")
+            print(f"   Error: {str(e)}")
+            print("\n💡 Troubleshooting:")
+            print("   1. Ensure Docker container 'postgres-stock' is running:")
+            print("      docker ps | grep postgres-stock")
+            print("   2. Check container port mapping:")
+            print("      docker port postgres-stock")
+            print("   3. Verify database exists:")
+            print("      docker exec -it postgres-stock psql -U postgres -l")
+            print("   4. Check credentials match your container setup")
+            print("=" * 70)
+            raise
         
         # Calculate KPIs
         kpi_calc = InventoryKPICalculator(self.df, self.df_transactions)
@@ -185,13 +239,17 @@ class StockDashboardApp:
         print("🚀 Starting Unified Stock Management Dashboard...")
         print("=" * 70)
         print(f"📊 Dashboard URL: http://127.0.0.1:{APP_CONFIG['port']}")
+        print(f"🗄️  Database: PostgreSQL (Container: postgres-stock)")
+        print(f"📦 Products loaded: {len(self.df)}")
+        print(f"📝 Transactions loaded: {len(self.df_transactions)}")
         print("=" * 70)
         print("\n✨ Features Available:")
-        print("  • Stock Dashboard - Comprehensive inventory overview")
+        print("  • Stock Dashboard - Real-time inventory from database")
         print("  • KPI Metrics - 11 clickable KPI cards with detailed calculations")
         print("  • Advanced Analytics - ABC analysis, supplier performance, aging")
         print("  • Inventory Details - Filterable, sortable data table")
         print("\n💡 Click any KPI card to see detailed calculation breakdown!")
+        print("💾 All data is fetched from PostgreSQL database in real-time!")
         print("=" * 70)
         
         self.app.run(

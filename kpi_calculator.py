@@ -387,6 +387,15 @@ class InventoryKPICalculator:
             dict: ABC classification
         """
         df = self.stock_df.copy()
+        
+        # Handle empty data
+        if df.empty or df['Total_Value'].sum() == 0:
+            return {
+                'category_A': {'count': 0, 'percentage': 0, 'value': 0, 'value_percentage': 0},
+                'category_B': {'count': 0, 'percentage': 0, 'value': 0, 'value_percentage': 0},
+                'category_C': {'count': 0, 'percentage': 0, 'value': 0, 'value_percentage': 0}
+            }
+        
         df = df.sort_values('Total_Value', ascending=False)
         
         total_value = df['Total_Value'].sum()

@@ -44,7 +44,7 @@ Each product tracked with comprehensive information:
 - ⚖️ **Weight** (Net & Gross)
 - 📦 **Packaging Type** - Box, pallet, container
 - 🎨 **Color/Variant** - Product variations
-- 🔢 **Unit of Measure** - Pieces, kg, liters, etc.
+- 🔢 **Unit of Measure** - Pieces, kg, liters, etc. 
 
 #### **1.3 Financial Data**
 - 💰 **Cost Price** - Purchase cost per unit
