@@ -103,6 +103,12 @@ docker run --name postgres-stock \
   -d postgres:15
 ```
 
+**⚠️ Security Note**: The default credentials above (postgres/postgres) are for development only. For production environments, use strong passwords and consider:
+- Using Docker secrets or environment files
+- Implementing proper access controls
+- Enabling SSL/TLS connections
+- Regular security audits
+
 ### 2. Verify Container is Running
 
 ```bash
@@ -314,11 +320,12 @@ docker exec -it postgres-stock psql -U postgres -d stock_management
 # Check active connections
 SELECT * FROM pg_stat_activity;
 
-# View table sizes
-SELECT schemaname, tablename, pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename)) AS size
+# View table sizes (formatted for safety)
+SELECT schemaname, tablename, 
+       pg_size_pretty(pg_total_relation_size(quote_ident(schemaname)||'.'||quote_ident(tablename))) AS size
 FROM pg_tables
 WHERE schemaname NOT IN ('pg_catalog', 'information_schema')
-ORDER BY pg_total_relation_size(schemaname||'.'||tablename) DESC;
+ORDER BY pg_total_relation_size(quote_ident(schemaname)||'.'||quote_ident(tablename)) DESC;
 ```
 
 ## 🤝 Contributing
