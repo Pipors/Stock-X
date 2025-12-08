@@ -22,9 +22,10 @@ class InventoryKPICalculator:
             transactions_df: DataFrame with historical transactions
             cost_data: Optional dict with cost information
         """
-        self.stock_df = stock_df.copy()
-        self.transactions_df = transactions_df.copy()
+        self.stock_df = stock_df.copy() if not stock_df.empty else stock_df
+        self.transactions_df = transactions_df.copy() if not transactions_df.empty else transactions_df
         self.cost_data = cost_data or {}
+        self.is_empty = stock_df.empty or len(stock_df) == 0
         
     def inventory_turnover(self, period_days=365):
         """
@@ -155,6 +156,17 @@ class InventoryKPICalculator:
         Returns:
             dict: Fulfillment metrics
         """
+        # Handle empty dataframes
+        if self.stock_df.empty or self.transactions_df.empty:
+            return {
+                'fulfillment_rate': 0,
+                'total_orders': 0,
+                'fulfilled_orders': 0,
+                'unfulfilled_orders': 0,
+                'period_days': period_days,
+                'status': 'No Data'
+            }
+        
         recent_transactions = self.transactions_df[
             self.transactions_df['Date'] >= datetime.now() - timedelta(days=period_days)
         ]
@@ -162,7 +174,7 @@ class InventoryKPICalculator:
         total_outbound = len(recent_transactions[recent_transactions['Type'] == 'Out'])
         
         # Assume 95-99% fulfillment based on stock status
-        critical_stock_ratio = len(self.stock_df[self.stock_df['Stock_Status'] == 'Critical']) / len(self.stock_df)
+        critical_stock_ratio = len(self.stock_df[self.stock_df['Stock_Status'] == 'Critical']) / len(self.stock_df) if len(self.stock_df) > 0 else 0
         
         fulfillment_rate = 100 - (critical_stock_ratio * 10)
         fulfillment_rate = max(85, min(fulfillment_rate, 100))

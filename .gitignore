@@ -9,3 +9,8 @@
 /check_password.ps1
 /diagnose_db.ps1
 *.md
+/templates
+/scripts
+/docs
+/old_versions
+/venv

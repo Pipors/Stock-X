@@ -35,12 +35,12 @@ class DatabaseConnection:
             }
             
             # Debug: Print loaded config (mask password)
-            print(f"📋 Database Config Loaded:")
-            print(f"   Host: {self.db_config['host']}")
-            print(f"   Port: {self.db_config['port']}")
-            print(f"   Database: {self.db_config['database']}")
-            print(f"   User: {self.db_config['user']}")
-            print(f"   Password: {'*' * len(str(self.db_config['password']))}")
+            # print(f"📋 Database Config Loaded:")
+            # print(f"   Host: {self.db_config['host']}")
+            # print(f"   Port: {self.db_config['port']}")
+            # print(f"   Database: {self.db_config['database']}")
+            # print(f"   User: {self.db_config['user']}")
+            # print(f"   Password: {'*' * len(str(self.db_config['password']))}")
         else:
             self.db_config = db_config
     
@@ -94,46 +94,40 @@ class StockDataAccess:
         self.db = db_connection
     
     def get_current_stock_summary(self):
-        """Get current stock levels across all warehouses"""
+        """Get current stock levels - one row per product per warehouse"""
         query = """
         SELECT 
             p.product_id,
             p.sku,
             p.product_name as "Product",
             c.category_name as "Category",
-            SUM(i.quantity_on_hand) as "Quantity",
-            SUM(i.quantity_reserved) as "Reserved",
-            SUM(i.quantity_available) as "Available",
+            w.warehouse_name as "Warehouse",
+            COALESCE(i.quantity_on_hand, 0) as "Quantity",
+            COALESCE(i.quantity_reserved, 0) as "Reserved",
+            COALESCE(i.quantity_on_hand - i.quantity_reserved, 0) as "Available",
             p.reorder_point as "Reorder_Level",
             p.cost_price as "Unit_Price",
             p.selling_price as "Selling_Price",
-            SUM(i.quantity_on_hand * p.cost_price) as "Total_Value",
-            CASE 
-                WHEN SUM(i.quantity_on_hand) < p.reorder_point * 0.5 THEN 'Critical'
-                WHEN SUM(i.quantity_on_hand) < p.reorder_point THEN 'Low'
-                WHEN SUM(i.quantity_on_hand) < p.reorder_point * 2 THEN 'Adequate'
-                ELSE 'Overstocked'
-            END as "Stock_Status",
-            MAX(w.warehouse_name) as "Warehouse",
-            MAX(s.supplier_name) as "Supplier",
-            MAX(i.last_restocked_date) as "Last_Restocked",
-            MAX(i.expiry_date) as "Expiry_Date"
+            COALESCE(i.quantity_on_hand * p.cost_price, 0) as "Total_Value",
+            COALESCE(i.stock_status, 
+                CASE 
+                    WHEN COALESCE(i.quantity_on_hand, 0) = 0 THEN 'Out of Stock'
+                    WHEN COALESCE(i.quantity_on_hand, 0) < p.reorder_point * 0.5 THEN 'Critical'
+                    WHEN COALESCE(i.quantity_on_hand, 0) < p.reorder_point THEN 'Low'
+                    WHEN COALESCE(i.quantity_on_hand, 0) < p.reorder_point * 2 THEN 'Adequate'
+                    ELSE 'Overstocked'
+                END
+            ) as "Stock_Status",
+            s.supplier_name as "Supplier",
+            COALESCE(i.last_restocked_date, CURRENT_DATE - INTERVAL '90 days') as "Last_Restocked",
+            NULL as "Expiry_Date"
         FROM products p
-        LEFT JOIN inventory i ON p.product_id = i.product_id
+        CROSS JOIN warehouses w
+        LEFT JOIN inventory i ON p.product_id = i.product_id AND w.warehouse_id = i.warehouse_id
         LEFT JOIN categories c ON p.category_id = c.category_id
-        LEFT JOIN warehouses w ON i.warehouse_id = w.warehouse_id
-        LEFT JOIN suppliers s ON s.supplier_id = (
-            SELECT po.supplier_id 
-            FROM purchase_orders po
-            JOIN purchase_order_items poi ON po.po_id = poi.po_id
-            WHERE poi.product_id = p.product_id
-            ORDER BY po.order_date DESC
-            LIMIT 1
-        )
-        WHERE p.is_active = TRUE
-        GROUP BY p.product_id, p.sku, p.product_name, c.category_name, 
-                 p.reorder_point, p.cost_price, p.selling_price
-        ORDER BY p.sku;
+        LEFT JOIN suppliers s ON s.supplier_id = i.supplier_id
+        WHERE p.is_active = TRUE AND w.is_active = TRUE
+        ORDER BY p.sku, w.warehouse_name;
         """
         return self.db.execute_query(query)
     
@@ -147,14 +141,21 @@ class StockDataAccess:
             c.category_name as "Category",
             i.quantity_on_hand as "Quantity",
             i.quantity_reserved as "Reserved",
-            i.quantity_available as "Available",
-            i.stock_status as "Status",
+            (i.quantity_on_hand - i.quantity_reserved) as "Available",
+            COALESCE(i.stock_status,
+                CASE 
+                    WHEN i.quantity_on_hand = 0 THEN 'Out of Stock'
+                    WHEN i.quantity_on_hand < p.reorder_point * 0.5 THEN 'Critical'
+                    WHEN i.quantity_on_hand < p.reorder_point THEN 'Low'
+                    ELSE 'Adequate'
+                END
+            ) as "Status",
             i.bin_location as "Location"
         FROM inventory i
         JOIN products p ON i.product_id = p.product_id
         JOIN warehouses w ON i.warehouse_id = w.warehouse_id
         LEFT JOIN categories c ON p.category_id = c.category_id
-        WHERE p.is_active = TRUE
+        WHERE p.is_active = TRUE AND w.is_active = TRUE
         """
         
         if warehouse_id:
@@ -163,18 +164,22 @@ class StockDataAccess:
         
         return self.db.execute_query(query)
     
-    def get_transaction_history(self, days=30, transaction_type=None):
+    def get_transaction_history(self, days=None, transaction_type=None):
         """Get transaction history for specified period"""
         query = """
         SELECT 
             th.transaction_date as "Date",
-            th.transaction_type as "Type",
+            CASE 
+                WHEN th.transaction_type = 'purchase' THEN 'In'
+                WHEN th.transaction_type = 'sale' THEN 'Out'
+                ELSE 'Adjustment'
+            END as "Type",
             p.product_name as "Product",
             c.category_name as "Category",
             w.warehouse_name as "Warehouse",
-            th.quantity_change as "Quantity",
+            ABS(th.quantity_change) as "Quantity",
             th.unit_cost as "Unit_Cost",
-            th.total_value as "Total_Value",
+            ABS(th.total_value) as "Total_Value",
             th.reference_number as "Reference",
             u.username as "User"
         FROM transaction_history th
@@ -182,10 +187,14 @@ class StockDataAccess:
         JOIN warehouses w ON th.warehouse_id = w.warehouse_id
         LEFT JOIN categories c ON p.category_id = c.category_id
         LEFT JOIN users u ON th.performed_by = u.user_id
-        WHERE th.transaction_date >= CURRENT_DATE - INTERVAL '%s days'
+        WHERE 1=1
         """
         
-        params = [days]
+        params = []
+        
+        if days is not None:
+            query += " AND th.transaction_date >= CURRENT_DATE - CAST(%s || ' days' AS INTERVAL)"
+            params.append(days)
         
         if transaction_type:
             query += " AND th.transaction_type = %s"
@@ -194,7 +203,6 @@ class StockDataAccess:
         query += " ORDER BY th.transaction_date DESC LIMIT 500"
         
         return self.db.execute_query(query, tuple(params))
-    
     def get_low_stock_items(self):
         """Get products below reorder point"""
         query = """
@@ -202,7 +210,7 @@ class StockDataAccess:
             p.sku as "SKU",
             p.product_name as "Product",
             c.category_name as "Category",
-            SUM(i.quantity_on_hand) as "Current_Stock",
+            SUM(COALESCE(i.quantity_on_hand, 0)) as "Current_Stock",
             p.reorder_point as "Reorder_Point",
             p.reorder_quantity as "Reorder_Quantity",
             s.supplier_name as "Supplier",
@@ -211,42 +219,24 @@ class StockDataAccess:
         LEFT JOIN inventory i ON p.product_id = i.product_id
         LEFT JOIN categories c ON p.category_id = c.category_id
         LEFT JOIN suppliers s ON s.supplier_id = (
-            SELECT po.supplier_id 
-            FROM purchase_orders po
-            JOIN purchase_order_items poi ON po.po_id = poi.po_id
-            WHERE poi.product_id = p.product_id
-            ORDER BY po.order_date DESC
+            SELECT i2.supplier_id 
+            FROM inventory i2
+            WHERE i2.product_id = p.product_id
+            ORDER BY i2.last_restocked_date DESC
             LIMIT 1
         )
         WHERE p.is_active = TRUE
         GROUP BY p.product_id, p.sku, p.product_name, c.category_name, 
                  p.reorder_point, p.reorder_quantity, s.supplier_name, s.lead_time_days
-        HAVING SUM(i.quantity_on_hand) < p.reorder_point
-        ORDER BY (SUM(i.quantity_on_hand)::float / NULLIF(p.reorder_point, 0)) ASC;
+        HAVING SUM(COALESCE(i.quantity_on_hand, 0)) < p.reorder_point
+        ORDER BY (SUM(COALESCE(i.quantity_on_hand, 0))::float / NULLIF(p.reorder_point, 0)) ASC;
         """
         return self.db.execute_query(query)
     
     def get_expiring_products(self, days=90):
-        """Get products expiring within specified days"""
-        query = """
-        SELECT 
-            p.sku as "SKU",
-            p.product_name as "Product",
-            w.warehouse_name as "Warehouse",
-            i.quantity_on_hand as "Quantity",
-            i.batch_number as "Batch",
-            i.expiry_date as "Expiry_Date",
-            EXTRACT(DAY FROM (i.expiry_date - CURRENT_DATE)) as "Days_Until_Expiry",
-            (i.quantity_on_hand * p.cost_price) as "Value_At_Risk"
-        FROM inventory i
-        JOIN products p ON i.product_id = p.product_id
-        JOIN warehouses w ON i.warehouse_id = w.warehouse_id
-        WHERE i.expiry_date IS NOT NULL
-          AND i.expiry_date <= CURRENT_DATE + INTERVAL '%s days'
-          AND i.quantity_on_hand > 0
-        ORDER BY i.expiry_date ASC;
-        """
-        return self.db.execute_query(query, (days,))
+        """Get products expiring within specified days - Not available in minimal schema"""
+        # Return empty dataframe as minimal schema doesn't track expiry dates
+        return pd.DataFrame(columns=['SKU', 'Product', 'Warehouse', 'Quantity', 'Batch', 'Expiry_Date', 'Days_Until_Expiry', 'Value_At_Risk'])
     
     def get_abc_analysis_data(self):
         """Get data for ABC analysis"""
@@ -256,49 +246,29 @@ class StockDataAccess:
             p.sku,
             p.product_name as "Product",
             c.category_name as "Category",
-            SUM(i.quantity_on_hand) as quantity,
+            SUM(COALESCE(i.quantity_on_hand, 0)) as quantity,
             p.cost_price as unit_value,
-            SUM(i.quantity_on_hand * p.cost_price) as total_value,
-            p.abc_classification as "ABC_Class"
+            SUM(COALESCE(i.quantity_on_hand, 0) * p.cost_price) as total_value
         FROM products p
         LEFT JOIN inventory i ON p.product_id = i.product_id
         LEFT JOIN categories c ON p.category_id = c.category_id
-        WHERE p.is_active = TRUE
-        GROUP BY p.product_id, p.sku, p.product_name, c.category_name, 
-                 p.cost_price, p.abc_classification
+        GROUP BY p.product_id, p.sku, p.product_name, c.category_name, p.cost_price
         ORDER BY total_value DESC;
         """
         return self.db.execute_query(query)
     
     def get_supplier_performance(self):
-        """Get supplier performance metrics"""
-        query = """
-        SELECT 
-            s.supplier_name as "Supplier",
-            COUNT(DISTINCT po.po_id) as "Total_Orders",
-            SUM(CASE WHEN po.status = 'received' THEN 1 ELSE 0 END) as "Completed_Orders",
-            ROUND(AVG(EXTRACT(DAY FROM (po.actual_delivery_date - po.expected_delivery_date))), 1) as "Avg_Delay_Days",
-            ROUND(100.0 * SUM(CASE WHEN po.actual_delivery_date <= po.expected_delivery_date THEN 1 ELSE 0 END) / 
-                  NULLIF(COUNT(CASE WHEN po.actual_delivery_date IS NOT NULL THEN 1 END), 0), 1) as "OnTime_Percentage",
-            SUM(po.total_amount) as "Total_Value",
-            s.rating as "Rating",
-            s.lead_time_days as "Lead_Time"
-        FROM suppliers s
-        LEFT JOIN purchase_orders po ON s.supplier_id = po.supplier_id
-        WHERE s.is_active = TRUE
-        GROUP BY s.supplier_id, s.supplier_name, s.rating, s.lead_time_days
-        HAVING COUNT(DISTINCT po.po_id) > 0
-        ORDER BY "OnTime_Percentage" DESC;
-        """
-        return self.db.execute_query(query)
+        """Get supplier performance metrics - Not available in minimal schema"""
+        # Return empty dataframe as minimal schema doesn't track purchase orders
+        return pd.DataFrame(columns=['Supplier', 'Total_Orders', 'Completed_Orders', 'Avg_Delay_Days', 'OnTime_Percentage', 'Total_Value', 'Rating', 'Lead_Time'])
     
     def insert_transaction(self, transaction_data):
         """Insert a new transaction record"""
         query = """
         INSERT INTO transaction_history 
-        (transaction_type, reference_number, product_id, warehouse_id, 
-         quantity_change, unit_cost, total_value, performed_by, notes)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        (transaction_date, transaction_type, reference_number, product_id, warehouse_id, 
+         quantity_change, unit_cost, total_value, performed_by)
+        VALUES (CURRENT_DATE, %s, %s, %s, %s, %s, %s, %s, %s)
         RETURNING transaction_id;
         """
         
@@ -310,8 +280,7 @@ class StockDataAccess:
             transaction_data['quantity_change'],
             transaction_data.get('unit_cost'),
             transaction_data.get('total_value'),
-            transaction_data.get('user_id'),
-            transaction_data.get('notes')
+            transaction_data.get('user_id')
         )
         
         return self.db.execute_insert(query, params)
@@ -320,9 +289,7 @@ class StockDataAccess:
         """Update inventory quantity"""
         query = """
         UPDATE inventory
-        SET quantity_on_hand = quantity_on_hand + %s,
-            last_movement_date = CURRENT_DATE,
-            updated_at = CURRENT_TIMESTAMP
+        SET quantity_on_hand = quantity_on_hand + %s
         WHERE product_id = %s AND warehouse_id = %s
         RETURNING quantity_on_hand;
         """
@@ -345,12 +312,8 @@ class ProductDataAccess:
             c.category_name
         FROM products p
         LEFT JOIN categories c ON p.category_id = c.category_id
+        ORDER BY p.sku
         """
-        
-        if not include_inactive:
-            query += " WHERE p.is_active = TRUE"
-        
-        query += " ORDER BY p.sku"
         
         return self.db.execute_query(query)
     
@@ -374,23 +337,17 @@ class ProductDataAccess:
         """Add a new product"""
         query = """
         INSERT INTO products 
-        (sku, product_name, description, category_id, cost_price, selling_price,
-         reorder_point, reorder_quantity, weight_kg, unit_of_measure)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        (sku, product_name, category_id, cost_price, selling_price)
+        VALUES (%s, %s, %s, %s, %s)
         RETURNING product_id;
         """
         
         params = (
             product_data['sku'],
             product_data['name'],
-            product_data.get('description'),
             product_data.get('category_id'),
             product_data['cost_price'],
-            product_data['selling_price'],
-            product_data.get('reorder_point', 10),
-            product_data.get('reorder_quantity', 50),
-            product_data.get('weight_kg'),
-            product_data.get('unit_of_measure', 'pieces')
+            product_data['selling_price']
         )
         
         return self.db.execute_insert(query, params)

@@ -29,18 +29,18 @@ except Exception as e:
     # Try common passwords
     for pwd in ['postgres', 'password', '123456', 'admin', '']:
         try:
-            print(f"  Trying password: '{pwd}'")
-            conn = psycopg2.connect(
-                host=os.getenv('DB_HOST'),
-                port=os.getenv('DB_PORT'),
-                database=os.getenv('DB_NAME'),
-                user=os.getenv('DB_USER'),
-                password=pwd
-            )
-            print(f"\n✅ Success! The correct password is: '{pwd}'")
-            print(f"\nUpdate your .env file:")
-            print(f"DB_PASSWORD={pwd}")
-            conn.close()
-            break
+          print(f"  Trying password: '{pwd}'")
+          conn = psycopg2.connect(
+              host=os.getenv('DB_HOST'),
+              port=os.getenv('DB_PORT'),
+              database=os.getenv('DB_NAME'),
+              user=os.getenv('DB_USER'),
+              password=pwd
+          )
+          print(f"\n✅ Success! The correct password is: '{pwd}'")
+          print(f"\nUpdate your .env file:")
+          print(f"DB_PASSWORD={pwd}")
+          conn.close()
+          break
         except Exception as e2:
-            print(f"    Failed")
+          print(f"    Failed")
